@@ -1,0 +1,202 @@
+{
+  "name": "Jobhub4",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jobhub4",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "586fd5c6-65ea-40c1-b619-ceccf8bbd684",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "7fa029cb-c929-495f-af8a-5dbde23c0c73"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst input = $json.body || $json.query || {};\nconst resumeText = input.resume || '';\n\nconst skillKeywords = [\n  'python', 'java', 'javascript', 'react', 'node', 'angular', 'vue',\n  'aws', 'azure', 'docker', 'kubernetes', 'sql', 'mongodb',\n  'machine learning', 'ai', 'data science', 'analytics',\n  'project management', 'agile', 'scrum', 'leadership'\n];\n\nconst extractedSkills = skillKeywords.filter(skill =>\n  resumeText.toLowerCase().includes(skill)\n);\n\nlet experienceLevel = 'entry';\nconst yearsMatch = resumeText.match(/(\\d+)\\+?\\s*years?/i);\nif (yearsMatch) {\n  const years = parseInt(yearsMatch[1]);\n  if (years >= 7) experienceLevel = 'senior';\n  else if (years >= 3) experienceLevel = 'mid';\n}\n\nreturn [{\n  json: {\n    job_title: input.job_title || extractedSkills[0] || 'developer',\n    location: input.location || 'India',\n    skills: extractedSkills,\n    experience_level: experienceLevel,\n    min_salary: input.min_salary || 0,\n    max_salary: input.max_salary || 999999999,\n    job_type: input.job_type || 'all',\n    remote_option: input.remote_option || 'all',\n    resume_text: resumeText,\n    preferred_cities: input.cities || ['bangalore', 'mumbai', 'delhi', 'hyderabad', 'pune', 'chennai']\n  }\n}];\n"
+      },
+      "id": "6c3fed66-a4ad-4b61-be18-2aa564357c37",
+      "name": "Extract Resume & Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.adzuna.com/v1/api/jobs/in/search/1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "results_per_page",
+              "value": "50"
+            },
+            {
+              "name": "what",
+              "value": "={{ $json.job_title }}"
+            },
+            {
+              "name": "where",
+              "value": "={{ $json.location }}"
+            },
+            {
+              "name": "salary_min",
+              "value": "={{ $json.min_salary }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "243b00d8-87e0-4370-bf0c-5a26f1395fb4",
+      "name": "Fetch India Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "httpTemplatedCustomAuth": {
+          "id": "mXceDDsUVlE6KMMd",
+          "name": "Adzuna Jobhub (Adarsh)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst jobsData = $input.first().json;\nconst params = $('Extract Resume & Parameters').first().json;\nconst jobs = jobsData.results || [];\n\nconst indiaLocations = {\n  cities: [\n    'mumbai', 'delhi', 'bangalore', 'bengaluru', 'hyderabad', 'ahmedabad',\n    'chennai', 'kolkata', 'surat', 'pune', 'jaipur', 'lucknow', 'kanpur',\n    'nagpur', 'indore', 'thane', 'bhopal', 'visakhapatnam', 'pimpri', 'patna',\n    'vadodara', 'ghaziabad', 'ludhiana', 'agra', 'nashik', 'faridabad',\n    'meerut', 'rajkot', 'kalyan', 'vasai', 'varanasi', 'srinagar', 'aurangabad',\n    'dhanbad', 'amritsar', 'navi mumbai', 'allahabad', 'ranchi', 'howrah',\n    'coimbatore', 'jabalpur', 'gwalior', 'vijayawada', 'jodhpur', 'madurai',\n    'raipur', 'kota', 'chandigarh', 'gurgaon', 'gurugram', 'noida', 'goa',\n    'kochi', 'cochin', 'mysore', 'thiruvananthapuram', 'trivandrum', 'bhubaneswar',\n    'dehradun', 'jamshedpur', 'cuttack', 'tiruppur', 'salem', 'warangal'\n  ],\n  states: [\n    'maharashtra', 'karnataka', 'tamil nadu', 'telangana', 'gujarat',\n    'uttar pradesh', 'west bengal', 'rajasthan', 'madhya pradesh',\n    'kerala', 'haryana', 'punjab', 'andhra pradesh', 'odisha', 'goa'\n  ],\n  country: ['india', 'bharath', 'bharat']\n};\n\nconst indiaJobs = jobs.filter(job => {\n  const location = ((job.location && job.location.display_name) || '').toLowerCase();\n  const area = ((job.location && job.location.area) || []).map(a => a.toLowerCase());\n  return (\n    indiaLocations.cities.some(city => location.includes(city)) ||\n    indiaLocations.states.some(state => location.includes(state)) ||\n    indiaLocations.country.some(country => location.includes(country)) ||\n    area.some(a => indiaLocations.cities.includes(a) || indiaLocations.states.includes(a))\n  );\n});\n\nlet filteredJobs = indiaJobs;\nif (params.preferred_cities && params.preferred_cities.length > 0) {\n  const preferredCitiesLower = params.preferred_cities.map(c => c.toLowerCase());\n  const cityFilteredJobs = indiaJobs.filter(job => {\n    const location = ((job.location && job.location.display_name) || '').toLowerCase();\n    return preferredCitiesLower.some(city => location.includes(city));\n  });\n  if (cityFilteredJobs.length > 0) {\n    filteredJobs = cityFilteredJobs;\n  }\n}\n\nif (params.job_type && params.job_type !== 'all') {\n  filteredJobs = filteredJobs.filter(job => {\n    const title = (job.title || '').toLowerCase();\n    const description = (job.description || '').toLowerCase();\n    if (params.job_type === 'full-time') {\n      return title.includes('full time') || title.includes('full-time') ||\n             description.includes('full time') || description.includes('full-time');\n    } else if (params.job_type === 'contract') {\n      return title.includes('contract') || description.includes('contract');\n    } else if (params.job_type === 'part-time') {\n      return title.includes('part time') || title.includes('part-time');\n    }\n    return true;\n  });\n}\n\nif (params.remote_option && params.remote_option !== 'all') {\n  filteredJobs = filteredJobs.filter(job => {\n    const description = (job.description || '').toLowerCase();\n    if (params.remote_option === 'remote') {\n      return description.includes('remote') || description.includes('work from home') || description.includes('wfh');\n    } else if (params.remote_option === 'hybrid') {\n      return description.includes('hybrid');\n    } else if (params.remote_option === 'onsite') {\n      return !description.includes('remote') && !description.includes('hybrid');\n    }\n    return true;\n  });\n}\n\nfilteredJobs = filteredJobs.filter(job => {\n  const salaryMin = job.salary_min || 0;\n  const salaryMax = job.salary_max || 999999999;\n  return salaryMin >= params.min_salary &&\n         (params.max_salary === 999999999 || salaryMax <= params.max_salary);\n});\n\nreturn [{ json: { filteredJobs, params } }];\n"
+      },
+      "id": "7a843587-a54e-4820-bf3c-09fdf8500131",
+      "name": "Filter India Locations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $input.first().json;\nconst jobs = data.filteredJobs;\nconst params = data.params;\n\nfunction calculateMatchScore(job, resumeSkills, resumeText) {\n  let score = 0;\n  const title = (job.title || '').toLowerCase();\n  const description = (job.description || '').toLowerCase();\n  const fullText = title + ' ' + description;\n\n  if (resumeSkills && resumeSkills.length > 0) {\n    const matchedSkills = resumeSkills.filter(skill =>\n      fullText.includes(skill.toLowerCase())\n    );\n    score += (matchedSkills.length / resumeSkills.length) * 40;\n  }\n\n  const resumeKeywords = resumeText.toLowerCase().split(/\\W+/).filter(w => w.length > 3);\n  const titleWords = title.split(/\\W+/);\n  const titleMatches = titleWords.filter(word => resumeKeywords.includes(word));\n  score += (titleMatches.length / Math.max(titleWords.length, 1)) * 30;\n\n  if (params.experience_level === 'senior' && (title.includes('senior') || title.includes('lead'))) {\n    score += 20;\n  } else if (params.experience_level === 'mid' && (title.includes('mid') || !title.includes('senior'))) {\n    score += 20;\n  } else if (params.experience_level === 'entry' && (title.includes('junior') || title.includes('entry'))) {\n    score += 20;\n  } else {\n    score += 10;\n  }\n\n  const location = ((job.location && job.location.display_name) || '').toLowerCase();\n  if (params.preferred_cities && params.preferred_cities.some(city =>\n    location.includes(city.toLowerCase())\n  )) {\n    score += 10;\n  }\n\n  return Math.min(score, 100);\n}\n\nconst scoredJobs = jobs.map(job => {\n  const matchScore = calculateMatchScore(job, params.skills, params.resume_text);\n  const salary = (job.salary_min && job.salary_max)\n    ? '₹' + Math.round(job.salary_min).toLocaleString('en-IN') + ' - ₹' + Math.round(job.salary_max).toLocaleString('en-IN')\n    : 'Not specified';\n  return {\n    title: job.title,\n    company: (job.company && job.company.display_name) || 'Not specified',\n    location: (job.location && job.location.display_name) || 'India',\n    city: (job.location && job.location.area && job.location.area[0]) || 'Not specified',\n    state: (job.location && job.location.area && job.location.area[1]) || 'Not specified',\n    salary,\n    salary_min: job.salary_min || 0,\n    salary_max: job.salary_max || 0,\n    description: (job.description || '').substring(0, 300) + '...',\n    url: job.redirect_url,\n    posted: job.created,\n    match_score: Math.round(matchScore),\n    category: (job.category && job.category.label) || 'General',\n    contract_type: job.contract_type || 'Not specified'\n  };\n});\n\nscoredJobs.sort((a, b) => b.match_score - a.match_score);\n\nconst jobsByCity = {};\nscoredJobs.forEach(job => {\n  const city = job.city;\n  if (!jobsByCity[city]) jobsByCity[city] = [];\n  jobsByCity[city].push(job);\n});\n\nreturn [{\n  json: {\n    total_jobs: scoredJobs.length,\n    jobs: scoredJobs.slice(0, 20),\n    jobs_by_city: jobsByCity,\n    filters_applied: {\n      location: params.location,\n      preferred_cities: params.preferred_cities,\n      min_salary: params.min_salary,\n      max_salary: params.max_salary !== 999999999 ? params.max_salary : 'No limit',\n      job_type: params.job_type,\n      remote_option: params.remote_option,\n      experience_level: params.experience_level\n    },\n    matched_skills: params.skills\n  }\n}];\n"
+      },
+      "id": "c8da43f3-9d33-4e63-8757-e1e32bf7fae3",
+      "name": "Match with Resume",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a038fdce-27d9-4393-bc1c-cab7c2f87311",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Resume & Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Resume & Parameters": {
+      "main": [
+        [
+          {
+            "node": "Fetch India Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch India Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter India Locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter India Locations": {
+      "main": [
+        [
+          {
+            "node": "Match with Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match with Resume": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8d5ba350-86e6-4e3c-aad6-4a43863822bf",
+  "meta": {
+    "instanceId": "b2ed32a32a6e9f9d7b68a88b71b6751a82afed9691883999349c96c58f776e70"
+  },
+  "nodeGroups": [],
+  "id": "05kadNHkzgSw5J4J",
+  "tags": []
+}
